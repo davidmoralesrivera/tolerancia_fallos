@@ -23,6 +23,7 @@ public class RingNode extends Thread{
     boolean nextConnected;
     HashMap<String,String> msg_map;
     boolean serverFunction;
+    boolean closeRing;
     
     public static void main(String[] args) {
         new RingNode(Integer.parseInt(args[0]),Integer.parseInt(args[1]) , args[2]);
@@ -109,6 +110,21 @@ public class RingNode extends Thread{
                         DataInputStream in = new DataInputStream(before.getInputStream());
                         String msg = in.readUTF();
                         String data[] = msg.split(";");
+                        
+                        if(data[0].equals("is_closed") && !serverFunction){
+                            if(data[1].equals(myIP)){
+                                //soy servidor
+                                serverFunction = true;
+                                System.out.println("Se establece como servidor");
+                                sendToBefore("set_server;"+getMyIp());
+                            }else{
+                                sendToNext(msg);
+                            }
+                        }
+                        
+                        
+                        
+                        
                         if(data[0].equals("msg")){
                             if(serverFunction){
                                 msg_map.put(data[1], msg);
@@ -172,9 +188,9 @@ public class RingNode extends Thread{
                                 sendToNext("set_last;"+getMyIp()+";"+listenPort);
                                 
                             }
-                        }else if(data[0].equals("set_server")){
+                        }else if(data[0].equals("set_server") && !serverFunction){
                             System.out.println("El servidor es: "+data[1]);
-                            
+                            sendToBefore(msg);
                         }
                     } catch (IOException ex) {
                         System.out.println("Se desconecto el nodo siguiente");
@@ -205,8 +221,8 @@ public class RingNode extends Thread{
                         nextConnected = true;
                         intentos = 0;
                         receiveFromNext();
-                        
-                        sendToNext("msg;"+getMyInfo());
+                        sendToNext("is_closed;"+getMyIp());
+//                        sendToNext("msg;"+getMyInfo());
                         
                     } catch (UnknownHostException ex) {
                         System.out.printf("No es posible conectarse con el siguiente nodo, intento: %d\n",intentos++);
