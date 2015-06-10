@@ -24,6 +24,7 @@ public class RingNode extends Thread{
     HashMap<String,String> msg_map;
     boolean serverFunction;
     boolean closeRing;
+    ArrayList<String> msg_queue;
     
     public static void main(String[] args) {
         new RingNode(Integer.parseInt(args[0]),Integer.parseInt(args[1]) , args[2]);
@@ -60,6 +61,7 @@ public class RingNode extends Thread{
         this.nextPort = nextPort;
         this.nextNodeIp = nextIp;
         this.msg_map = new HashMap<String,String>();
+        msg_queue = new ArrayList<String>();
         tryConnect();
         start();
     }
@@ -118,7 +120,9 @@ public class RingNode extends Thread{
                                 System.out.println("Se establece como servidor");
                                 sendToBefore("set_server;"+getMyIp());
                             }else{
-                                sendToNext(msg);
+                                
+                                msg_queue.add(msg);
+                                
                             }
                         }
                         
@@ -222,6 +226,10 @@ public class RingNode extends Thread{
                         intentos = 0;
                         receiveFromNext();
                         sendToNext("is_closed;"+getMyIp());
+                        for (int i = 0; i < msg_queue.size(); i++) {
+                            sendToNext(msg_queue.get(i));
+                        }
+                        msg_queue.clear();
 //                        sendToNext("msg;"+getMyInfo());
                         
                     } catch (UnknownHostException ex) {
