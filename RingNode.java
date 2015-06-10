@@ -5,9 +5,7 @@ import java.io.IOException;
 import java.net.*;
 import java.text.DateFormat;
 import java.text.SimpleDateFormat;
-import java.util.ArrayList;
-import java.util.Date;
-import java.util.Enumeration;
+import java.util.*;
 
 
 /**
@@ -23,7 +21,8 @@ public class RingNode extends Thread{
     Socket before;
     boolean beforeConnected;
     boolean nextConnected;
-    ArrayList<String> msg_queue;
+    HashMap<String,String> msg_map;
+    boolean serverFunction;
     
     public static void main(String[] args) {
         new RingNode(Integer.parseInt(args[0]),Integer.parseInt(args[1]) , args[2]);
@@ -55,12 +54,13 @@ public class RingNode extends Thread{
         System.out.println(getMyIp());
         beforeConnected = false;
         nextConnected = false;
+        serverFunction = false;
         this.listenPort=listenPort;
         this.nextPort = nextPort;
         this.nextNodeIp = nextIp;
-        this.msg_queue = new ArrayList<String>();
+        this.msg_map = new HashMap<String,String>();
         tryConnect();
-        this.start();
+        start();
     }
     
     public void sendToNext(String msg){
@@ -74,23 +74,79 @@ public class RingNode extends Thread{
         }
 
     }
+    public void sendToBefore(String msg){
+                  
+        DataOutputStream out;
+        try {
+            out = new DataOutputStream(before.getOutputStream());
+            out.writeUTF(msg);
+        } catch (IOException ex) {
+            
+        }
+
+    }
+    
+    
+    public void serverFunction(){
+        Iterator it = msg_map.entrySet().iterator();
+        while (it.hasNext()) {
+            Map.Entry pair = (Map.Entry)it.next();
+            System.out.println(pair.getValue());
+            it.remove();
+        }
+    }
 
     public void receiveFromBefore(){
-        String myIP = getMyIp();
+        
         Thread receive = new Thread(new Runnable() {
 
             @Override
             public void run() {
+                String myIP = getMyIp();
                 while(true){
                     
                     try {
                         DataInputStream in = new DataInputStream(before.getInputStream());
                         String msg = in.readUTF();
-                        if (next!=null){
+                        String data[] = msg.split(";");
+                        if(data[0].equals("msg")){
+                            if(serverFunction){
+                                msg_map.put(data[1], msg);
+                            }
+                            if(data[1].equals(myIP)){
+                                // el mensaje ya dio la vuelta es decir se completo el envio en anillo y debe guardar el archivo
+                                serverFunction();
+                            }else{
+                                //intenta enviar el mensaje al siguiente 
+
+                                if (next!=null){
+                                    sendToNext(msg);
+                                }else{
+                                    //el siguiente no esta entoncs nos volvemos servidor y le avisamos al resto que somos servidor,
+                                    // a la vez que esperamos que nos digan quien es el ultimo para rehacer el anillo
+                                    serverFunction = true;
+                                    sendToBefore("get_last");
+                                    sendToBefore("set_server;"+getMyIp());
+                                }
+                            }
                             
+                            
+                        }else if(data[0].equals("set_last")){
+                            if(next!=null){
+                                sendToNext(msg);
+                            }else{
+                                // recibio la informacion de quien es el ultimo entoncs reconecta el anillo
+                                nextNodeIp = data[1];
+                                nextPort = Integer.parseInt(data[2]);
+                                tryConnect();
+                            }
                         }
+                        
                     } catch (IOException ex) {
                         System.out.println("Se desconecto el nodo anterior");
+                        before = null;
+                        beforeConnected = false;
+                        start();
                     }
                 
                 }
@@ -108,9 +164,22 @@ public class RingNode extends Thread{
                     try {
                         DataInputStream in = new DataInputStream(next.getInputStream());
                         String msg = in.readUTF();
+                        String data[] = msg.split(";");
+                        if(data[0].equals("get_last")){
+                            if(before!=null){
+                                sendToBefore(msg);
+                            }else{
+                                sendToNext("set_last;"+getMyIp()+";"+listenPort);
+                                
+                            }
+                        }else if(data[0].equals("set_server")){
+                            System.out.println("El servidor es: "+data[1]);
+                            
+                        }
                     } catch (IOException ex) {
                         System.out.println("Se desconecto el nodo siguiente");
                         next=null;
+                        nextConnected=false;
                     }
                 }
             }
@@ -137,7 +206,7 @@ public class RingNode extends Thread{
                         intentos = 0;
                         receiveFromNext();
                         
-                        sendToNext(getMyInfo());
+                        sendToNext("msg;"+getMyInfo());
                         
                     } catch (UnknownHostException ex) {
                         System.out.printf("No es posible conectarse con el siguiente nodo, intento: %d\n",intentos++);
